@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>vue列表页模板生成</title>
+     <!-- 引入Vue -->
+    <script src="./js/lib/vue.min.js"></script>
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="http://unpkg.com/iview/dist/styles/iview.css">
+
+    <!-- 引入组件库 -->
+    <script src="./js/lib/iview.min.js"></script>
+    <script src="./js/lib/jquery.min.js"></script>
+    <script src="./js/lib/underscore-min.js"></script>
+
+    <link rel="stylesheet" href="web/third-party/codemirror/lib/codemirror.css">
+
+    <script src="./web/third-party/codemirror/lib/codemirror.js"></script>
+    <script src="./web/third-party/codemirror/mode/javascript/javascript.js"></script>
+
+    <script src="./web/third-party/jquery/jquery.cookie.js"></script>
+    <script src="./js/lib/beautify.js"></script>
+    <script src="./js/lib/beautify-html.js"></script>
+
+    <style>
+        #app{
+            padding:20px;
+        }
+        body{
+            width:100%;
+            overflow-x:hidden
+        }
+        .mar-t14{
+            margin-bottom: 14px!important;
+        }
+        .mar-t20{
+            margin-top: 20px!important;
+        }
+        .mar-b14{
+            margin-bottom: 10px!important;
+        }
+        .clearfix{
+            clear:both
+        }
+        .container_column{
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .text-right{
+            text-align:right;
+        }
+        .w200{
+            width:200px;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    
+    <!--************************ 点击template***************************************************** -->
+    <Modal :visible.sync="showStr" width="800"  @on-cancel="close" id="sourceModal" title="vue页面代码">
+         <Form-item>
+             <input type="textarea" id="source">
+         </Form-item>
+    </Modal>
+     
+    <!--************************ 源码获取 formDynamic.items 和列表数据  ************************* -->
+    <Modal :visible.sync="showFormDataItemsModal" width="800" >
+        <Form-item label="输入查询条件源码">
+             <i-input type="textarea" :rows="8" :value.sync="rawForm" placeholder="请输入源码"></i-input>
+        </Form-item>
+         <Form-item label="输入表格列源码">
+             <i-input type="textarea" :rows="8" :value.sync="rawTr" placeholder="请输入源码"></i-input>
+        </Form-item>
+        <i-button type="primary" @click="formatForm">格式化</i-button>
+        <div class="container_column">
+            <div v-for="item in formDynamic.items">    </div>
+        </div>
+    </Modal>
+
+    <Row :gutter="16" v-show="isAlix">
+        <i-col span="16">
+            <h4>源码操作,alix的可以直接copy源码, 非alix的手动添加,本页面只针对列表页的查询条件模块</h4>
+        </i-col>
+         <i-col span="8">
+        
+             <i-button class="text-right mar-b14" type="primary" @click="showFormDataItemsModal=true">源码操作</i-button>
+            
+            <i-button class="text-right mar-b14" type="warning" @click="removeHistoryData">清除历史数据</i-button>
+        </i-col>
+    </Row>
+
+    <Row v-show="!isAlix">
+        <i-col  span="16">本页面只针对列表页</i-col>
+        <i-col span="8">
+            <i-button class="text-right mar-b14" type="warning" @click="removeHistoryData">清除历史数据</i-button>
+        </i-col>
+    </Row>
+
+    <div class="clearfix"></div>
+    
+    <Row>
+        <Form-item label="">
+            <h4>面包屑设置</h4>
+             <span v-for="item in breadCrumbList" style="margin-right:10px">
+             <input @change="storeBreadCrumb" class="w200 ivu-input" placeholder="请输入面包屑名称" v-model="item.name"/></span>
+             <i-button @click="addBreadCrumb" icon="plus" type="dashed">添加面包屑</i-button>
+        </Form-item>
+    </Row>
+    <div class="clearfix"></div>
+
+    <div>
+        <h4>表单列</h4>
+        <i-select :model.sync="colNum" style="width: 300px">
+            <i-option :value="1">1</i-option>
+            <i-option :value="2">2</i-option>
+            <i-option :value="3">3</i-option>
+            <i-option :value="4">4</i-option>
+        </i-select>
+    </div>
+
+
+    <i-form v-ref:form-dynamic :model="formDynamic" :label-width="80" class="mar-t20">
+         <h4>查询条件添加</h4>
+        <Form-item
+                v-for="item in formDynamic.items"
+                :label="'item ' + ($index + 1)"
+                :prop="'items.' + $index + '.key'"
+                :rules="{required: true, message: '项目' + ($index + 1) +'不能为空', trigger: 'blur'}">
+            <Row :gutter="5">
+                <i-col span="3">
+                    <i-input @on-change="storeData" type="text" :value.sync="item.label" placeholder="请输入label"></i-input>
+                </i-col>
+                <i-col span="3">
+                    <i-input @on-change="storeData" type="text" :value.sync="item.key" placeholder="请输入key"></i-input>
+                </i-col>
+                <i-col span="3">
+                    <i-select @on-change="storeData" :model.sync="item.type"  placeholder="请选择类型">
+                        <i-option value="1">下拉</i-option>
+                        <i-option value="2">输入框</i-option>
+                        <i-option value="3">日期</i-option>
+                        <i-option value="4">数字输入框</i-option>
+                    </i-select>
+                </i-col>
+                <i-col span="3">
+                    <i-input type="text" v-model="item.flag" placeholder="请输入日期flag: start 或者 end"></i-input>
+                </i-col>
+                <i-col span="3">
+                    <i-input type="text" :value.sync="item.other" placeholder="请输入other"></i-input>
+                </i-col>
+                <i-col span="2" offset="1">
+                    <i-button type="ghost" @click="handleRemove(item)">删除</i-button>
+                </i-col>
+            </Row>
+        </Form-item>
+        <Form-item style="margin-bottom:200px">
+            <Row>
+                <i-col span="12">
+                    <i-button type="dashed" long @click="handleAdd" icon="plus-round">新增</i-button>
+                </i-col>
+            </Row>
+        </Form-item>
+
+        <Row style="position:fixed;bottom:0;left:0; background:#f9f7f7;width:100%;padding-top:20px;border-top:1px solid #eee">
+            <Form-item >
+                <i-button type="primary" @click="handleSubmit('formDynamic')">点击查看template</i-button>
+                   </Form-item>
+        </Row>
+        
+    </i-form>
+</div>
+
+<script>
+    var app = new Vue({
+        el: '#app',
+        data() {
+            
+            var items = [
+                            {
+                                label: '',
+                                key:"",
+                                type:"",
+                                other:"",
+                                flag:""
+                            }
+                        ];
+            var newItems = localStorage.getItem('items') ? JSON.parse( localStorage.getItem('items') ) : items           
+
+            var breadCrumb = [{name:''}];
+            var newBreadCrumb = localStorage.getItem('breadCrumb') ? JSON.parse( localStorage.getItem('breadCrumb') ) : breadCrumb       
+
+            var columns = [{
+                                title: '序号',
+                                width: 60,
+                                render(row, column, index){
+                                    return index+1;
+                                },
+                                fixed:'left'
+                            }];
+            var newColumns =  localStorage.getItem('columns') ? JSON.parse( localStorage.getItem('columns') ) : columns                
+
+            return {
+                colNum:3,
+                isAlix: location.search.indexOf('alix=true')!==-1 ? true :false ,
+                breadCrumbList:newBreadCrumb,
+                rawTr:"",
+                
+                columnData:columns,
+                showFormDataItemsModal:false,
+                rawForm:"",
+                the:{
+                    use_codemirror: (!window.location.href.match(/without-codemirror/)),
+                    beautify_in_progress: false,
+                    editor: null // codemirror editor
+                },
+                showFormData:false,
+                showStr:false,
+                str:"",
+                formData:{},
+                formDynamic: {
+                    items:newItems
+                }
+            }
+        },
+        ready(){
+
+        },
+        methods: {
+            handleSubmit (name,flag) {
+                var _this = this;
+                function unpacker_filter(source) {
+                    var trailing_comments = '',
+                            comment = '',
+                            unpacked = '',
+                            found = false;
+
+                    // cut trailing comments
+                    do {
+                        found = false;
+                        if (/^\s*\/\*/.test(source)) {
+                            found = true;
+                            comment = source.substr(0, source.indexOf('*/') + 2);
+                            source = source.substr(comment.length).replace(/^\s+/, '');
+                            trailing_comments += comment + "\n";
+                        } else if (/^\s*\/\//.test(source)) {
+                            found = true;
+                            comment = source.match(/^\s*\/\/.*/)[0];
+                            source = source.substr(comment.length).replace(/^\s+/, '');
+                            trailing_comments += comment + "\n";
+                        }
+                    } while (found);
+
+                    var unpackers = [P_A_C_K_E_R, Urlencoded, JavascriptObfuscator/*, MyObfuscate*/];
+                    for (var i = 0; i < unpackers.length; i++) {
+                        if (unpackers[i].detect(source)) {
+                            unpacked = unpackers[i].unpack(source);
+                            if (unpacked != source) {
+                                source = unpacker_filter(unpacked);
+                            }
+                        }
+                    }
+                    return trailing_comments + source;
+                }
+
+                function beautify() {
+                    if (_this.the.beautify_in_progress) return;
+
+                    //store_settings_to_cookie();
+
+                    _this.the.beautify_in_progress = true;
+
+                    var source = _this.the.editor ? _this.the.editor.getValue() : $('#source').val(),
+                            output,
+                            opts = {};
+
+                    opts.indent_size = $('#tabsize').val();
+                    opts.indent_char = opts.indent_size == 1 ? '\t' : ' ';
+                    opts.max_preserve_newlines = $('#max-preserve-newlines').val();
+                    opts.preserve_newlines = opts.max_preserve_newlines !== "-1";
+                    opts.keep_array_indentation = $('#keep-array-indentation').prop('checked');
+                    opts.break_chained_methods = $('#break-chained-methods').prop('checked');
+                    opts.indent_scripts = $('#indent-scripts').val();
+                    opts.brace_style = $('#brace-style').val() + ($('#brace-preserve-inline').prop('checked') ? ",preserve-inline" : "");
+                    opts.space_before_conditional = $('#space-before-conditional').prop('checked');
+                    opts.unescape_strings = $('#unescape-strings').prop('checked');
+                    opts.jslint_happy = $('#jslint-happy').prop('checked');
+                    opts.end_with_newline = $('#end-with-newline').prop('checked');
+                    opts.wrap_line_length = $('#wrap-line-length').val();
+                    opts.indent_inner_html = $('#indent-inner-html').prop('checked');
+                    opts.comma_first = $('#comma-first').prop('checked');
+                    opts.e4x = $('#e4x').prop('checked');
+
+                    if (looks_like_html(source)) {
+                        output = html_beautify(source, opts);
+                    } else {
+                        if ($('#detect-packers').prop('checked')) {
+                            source = unpacker_filter(source);
+                        }
+                        output = js_beautify(source, opts);
+                    }
+                    if (_this.the.editor) {
+                        _this.the.editor.setValue(output);
+                    } else {
+                        $('#source').val(output);
+                    }
+
+                    _this.the.beautify_in_progress = false;
+                }
+
+                function looks_like_html(source) {
+                    // <foo> - looks like html
+                    var trimmed = source.replace(/^[ \t\n\r]+/, '');
+                    return trimmed && (trimmed.substring(0, 1) === '<');
+                }
+
+                this.$refs[name].validate((valid) => {
+                    if (valid) {
+                        /*
+                        *  input
+                        *  select
+                        *  date -> range
+                        * */
+
+                        //处理数据
+                        var data =   this.formDynamic.items;
+                        var formData={ 
+                            "currentPage":1,
+                            "pageSize":10,
+                        };
+                        var newArr = this.randomArr1( data,this.colNum );
+                        var hasDate = false;
+                        var str = "";
+                        _.each(newArr,  (rowItems,index0)=> {
+                            var rowStr = '';
+                            _.each( rowItems,(item,index) =>{
+                                   if( !item ) return;
+                                   var index = index+1;
+                                   var key = item.key;
+                                    formData[key] = "";
+
+                                    var className = "";
+                                    if( this.colNum == 3 ){
+                                        if( index % 3 == 1 ) {
+                                            className = "text-left";
+                                        }else if( index % 3 == 2 ){
+                                            className = "text-center";
+                                        }else if( index % 3 == 0 ){
+                                            className = "text-right"
+                                        }
+                                    }
+
+                                    let spanNum = Math.floor( 24/(this.colNum) );
+
+                                    switch (item.type){
+                                        case "1":
+                                            var formInput = `
+                                                <i-col span="${spanNum}"  class="${className}">
+                                                    <FormItem label="${item.label}" prop="${item.key}" class="w306 text-left">
+                                                        <Select type="text" v-model="formData.${item.key}" placeholder="请选择">
+                                                        <Option v-for="(item,key) in ${item.other=='bool' ? 'dp_list.yesOrNo' : 'dp_list.'+item.key }_dropList" :key="key" :value="item.value">
+                                                            {{item.name}}
+                                                        </Option>
+                                                        </Select>
+                                                    </FormItem>
+                                                </i-col>
+                                            `;
+                                            rowStr += formInput;
+                                            break;
+
+                                        case "2":
+                                            var formInput = `
+                                                <i-col span="${spanNum}"  class="${className}">
+                                                    <FormItem label="${item.label}" class="w306" prop="${item.key}">
+                                                        <Input type="text" v-model="formData.${item.key}" placeholder="">
+                                                        </Input>
+                                                    </FormItem>
+                                                </i-col>
+                                            `;
+                                            rowStr += formInput;
+                                            break;
+                                        case "3":
+                                            var formInput = `
+                                            <i-col span="${spanNum}"  class="${className}">
+                                                <FormItem label="${item.label}" prop="${item.key}" class="w306 datepicker">
+                                                    <input id="${item.key}" data-flag="${item.flag}" v-model="formData.${item.key}" class="flatpickr ivu-input" readonly  placeholder=""/>
+                                                    <Icon type="ios-close-outline"></Icon>
+                                                </FormItem>
+                                            </i-col>
+                                            `;
+                                            rowStr += formInput;
+                                            hasDate = true;
+                                            break;
+                                        case "4":
+                                            var formInput = `
+                                                <i-col span="${spanNum}"  class="${className}">
+                                                    <FormItem label="${item.label}" class="w306" prop="${item.key}">
+                                                        <Input number type="text" v-model="formData.${item.key}" placeholder="">
+                                                        </Input>
+                                                    </FormItem>
+                                                </i-col>
+                                            `;
+                                            rowStr += formInput;
+                                            break;    
+                                    }
+                            });
+                            str += `
+                            <!--********************** row (${index0+1}) ***************************-->
+                                <Row class="${index0 == 0 ? '' : 'mar-t14'}" >${rowStr}</Row>
+                            `;
+                            if( !rowItems ) return;
+                        });
+                        
+                        var tagScriptL = "<scr" + "ipt>";
+                        var tagScriptR = "</scr" + "ipt>";
+
+                        var breadCrumb = '';
+                        var pageTitle = '';
+                        _.each(this.breadCrumbList, (item,key)=>{
+                            
+                            var icon = key==this.breadCrumbList.length-1 ? '': '<Icon type="ios-arrow-right"></Icon> '
+
+                            var dash = key==this.breadCrumbList.length-1 ? '': '-'
+
+                            breadCrumb += '<span>'+item.name+'</span>'+icon +'\n';
+                            pageTitle += item.name + dash
+                        })
+
+                        var template = `
+                         <template>
+                            <div>
+                                  <div class="simple-breadcrumb col-xs-11">
+                                         ${breadCrumb}
+                                  </div>
+                                 <Form :model="formData" ref="formData" class="bgary padding030 mar-t15 bg-shadow bg-white"  :label-width="120"> 
+                                        ${str}
+                                     <Row class="text-center mar-t20">
+                                        <FormItem>
+                                            <Button type="primary" class="mar-r4" @click="queryList">查询</Button>
+                                            <Button type="ghost"  class="mar-r4" @click="fnReset('formData')">重置</Button>
+                                        </FormItem>
+                                    </Row>
+                                 </Form>
+
+                                 <div class="table-wrap padding2030 bg-white bg-shadow text-right">
+                                    <Row class="mar-b10 text-right">
+                                        <Button type="primary" class="mar-r4 cust icon"  icon="export" @click="">导出</Button>
+                                    </Row>
+                                    <Table @on-row-click="fnTableRowClick"  class="table-static-list" border :columns="columns4" :data="tableListData"></Table>
+
+                                    <Row class="mar-t10 text-center">
+                                        <Page
+                                        :total="pager.total"
+                                        :page-size="formData.pageSize"
+                                        :page-size-opts="pager.Opts"
+                                        @on-change="pageChange"
+                                        @on-page-size-change="pageSizeChange"
+                                        show-total
+                                        show-sizer></Page>
+                                    </Row>
+                                </div>
+                         </div>
+                         </template> 
+                         
+                         ${tagScriptL}
+                            import helper from "@/utils/helper";
+                            import { drop_lists } from '@/utils/drop_options';
+
+                            import Flatpickr from '@/assets/js/lib/flatpickr.min';
+                            import zh from '@/assets/js/lib/zh';
+                            Flatpickr.localize(zh.zh);
+
+                            export default {
+                                name:"fangkuan",
+                                data () {
+                                    return {
+                                        pager:{
+                                            "total":0,
+                                            "Opts":[10,20,50,100,200]
+                                        },
+                                        dp_list: drop_lists,
+                                        dateGroup:[],
+                                        formData:${JSON.stringify(formData ) },
+                                        columns4:${JSON.stringify(this.columnData)},
+                                        tableListData: []
+                                    }
+                                },
+                                mounted(){
+                                    document.title = '${pageTitle}';
+                                    var dateGroup0 = helper.datepickerRange("#dsctjrq","#dsctjrqEnd");
+                                    this.dateGroup = dateGroup0 ;
+
+                                    //查询列表
+                                    this.queryList();
+                                },
+                                methods:{
+                                    queryList(){
+                                         
+                                    },
+                                    go(routename,params){
+                                        this.$router.go({
+                                            name:routename,
+                                            params:params
+                                        })
+                                    },
+                                    pageChange(curPage){
+                                        this.formData.currentPage = curPage;
+                                        this.queryList();
+                                    },
+                                    pageSizeChange(pageSize){
+                                        this.formData.pageSize = pageSize;
+                                    },
+                                    fnReset(name){
+                                        //清除所有日期
+                                        ${ hasDate ? '_.each(this.dateGroup,function (element,index) {element.clear();});':'' }
+                                        this.$refs[name].resetFields();
+                                        this.queryList();
+                                    },
+                                    fnTableRowClick(){
+                                        $('.ivu-poptip-popper').hide();
+                                        $(event.target).parents('.ivu-poptip').find('.ivu-poptip-popper').toggle();
+                                        event.stopPropagation();
+                                    }
+                                }
+                            }
+                         ${tagScriptR} 
+                        `;
+
+                        this.str = str;
+                        this.formData = formData;
+
+                        //read_settings_from_cookie();
+                        if(!flag){
+                            var default_text = template;
+                            var textArea = $('#source')[0];
+
+                            if (_this.the.use_codemirror && typeof CodeMirror !== 'undefined') {
+                                _this.the.editor = CodeMirror.fromTextArea(textArea, {
+                                    theme: 'default',
+                                    lineNumbers: true
+                                });
+                                _this.the.editor.focus();
+
+                                _this.the.editor.setValue(default_text);
+                                $('.CodeMirror').click(function () {
+                                    if (_this.the.editor.getValue() == default_text) {
+                                        _this.the.editor.setValue('');
+                                    }
+                                });
+                            } else {
+                                $('#source').val(default_text).bind('click focus', function () {
+                                    if ($(this).val() == default_text) {
+                                        $(this).val('');
+                                    }
+                                }).bind('blur', function () {
+                                    if (!$(this).val()) {
+                                        $(this).val(default_text);
+                                    }
+                                });
+                            }
+                            var timer = setTimeout(function () {
+                                beautify();
+                                clearInterval(timer);
+                            },100);
+
+                            this.showStr = true;
+                        }
+                    } else {
+                        this.$Message.error('表单验证失败!');
+                    }
+                })
+            },
+            viewFormData(){
+                this.handleSubmit('formDynamic',1);
+                this.showFormData = true;
+            },
+             randomArr1(data,iNow){
+                var arrAll=[];
+                 var arr=[];
+                 for(var k=0;k<data.length;k++){
+                     arr.push(data[k])
+                 }
+
+                //  iNow是iAll的1/10  data/iNow ---> 10
+                for(var j=0;j < data.length/iNow; j++ ){
+                    var newArr=[];
+                    for(var i=0;i<iNow;i++){
+                         newArr.push( arr.splice( 0 , 1 )[0] );
+                        if(  arr.length == 0 ){
+                            break;
+                        }
+                    }
+                    arrAll.push(newArr)
+                }
+                //把arr的内容分批放到arrAll中,各批放到newSrr中
+                return arrAll
+            },
+            handleReset (name) {
+                this.$refs[name].resetFields();
+            },
+            handleAdd () {
+                this.formDynamic.items.push({
+                    label: '',
+                    key:"",
+                    type:"",
+                    other:"",
+                    flag:""
+                });
+            },
+            changeType(val){
+                
+            },
+            handleRemove (item) {
+                this.formDynamic.items.$remove(item);
+                this.storeData();
+            },
+            close(){
+                $('.CodeMirror').remove()
+            },
+            storeData(){
+                 window.localStorage.setItem( 'items', JSON.stringify( this.formDynamic.items ) );
+            },
+            storeBreadCrumb(){
+                 window.localStorage.setItem( 'breadCrumb', JSON.stringify( this.breadCrumbList ) );
+            },
+            removeHistoryData(){
+                 
+                window.localStorage.removeItem( 'items' );
+                window.localStorage.removeItem( 'breadCrumb' );
+                window.localStorage.removeItem( 'columns' );
+                this.breadCrumbList = [{name:''}]
+                this.formDynamic.items = [
+                            {
+                                label: '',
+                                key:"",
+                                type:"",
+                                other:"",
+                                flag:""
+                            }
+                        ];
+                this.columnData =  [{
+                                title: '序号',
+                                width: 60,
+                                render(row, column, index){
+                                    return index+1;
+                                },
+                                fixed:'left'
+                            }];        
+            },
+            formatTr(){
+
+                var $tr = $(this.rawTr);
+                
+                $tr.find('td').each(  (index,item) => {
+                        var result;
+                        switch (  $(item).text().length   ){
+                             case 1:case 2: case 3:
+                                result= 80;
+                                break;
+                            case 4:case 5:
+                                result=  100;
+                                break;
+                            case 6: 
+                                result=  120;
+                                break;
+                            case 7: case 8: 
+                                result=  140;
+                                break;
+                            case 9: case 10:
+                                result=  160;
+                                break;
+                            case 11:case 12:
+                                result=  200;
+                                break;
+                            default:
+                                result=  200;
+                                break;
+                        }
+
+                     this.columnData.push({
+                         title: $(item).text(),
+                         key: $(item).attr('field') ,
+                         width:result
+                     })
+                })
+
+                
+            },
+            formatForm(){
+                this.formDynamic.items = [];
+                $formStr = $(this.rawForm);
+                 
+                $formStr.find('.datatd').each( (index,item)=>{
+                    var field = $(item).children('input').attr('datafield');
+                    var label = $formStr.find('label[datafield="'+field+'"]').text() ;
+                    var $input = $(item).children('input');
+                    var type='';
+                    switch( $input.attr('edittype') ){
+                        case 'dropDownSelect':
+                            type="1";
+                            break;
+                        case 'validatebox':
+                            type="2";
+                            break;
+                        case 'datebox':
+                            type="3";
+                            break;
+                        case 'numberbox':  
+                            type="4";
+                            break;      
+                    }
+
+                    this.formDynamic.items.push({
+                                label: label,
+                                key:field,
+                                type:type,
+                                other:"",
+                                flag:""
+                    })
+                });
+                this.showFormDataItemsModal = false;
+                localStorage.setItem('items',JSON.stringify(this.formDynamic.items) );
+                this.rawForm = '';
+
+                this.formatTr();
+                localStorage.setItem('columns',JSON.stringify(this.columnData) );
+                this.rawTr = '';
+            },
+             
+            addBreadCrumb(){
+                this.breadCrumbList.push({
+                    name:''
+                });
+                
+            },
+        }
+    })
+</script>
+
+</body>
+</html>
